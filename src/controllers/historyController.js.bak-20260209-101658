@@ -1,0 +1,50 @@
+const { assertQuery } = require('../utils/validate');
+const historyService = require('../services/historyService');
+
+async function getHistory(req, res) {
+  try {
+    const { monitorId, from, to } = req.query;
+    const limit = Number(req.query.limit || 1000);
+    const offset = Number(req.query.offset || 0);
+
+    const errors = assertQuery({ monitorId, from, to, limit, offset });
+    if (errors.length) return res.status(400).json({ errors });
+
+    const rows = await historyService.listRaw({
+      monitorId,
+      from: Number(from),
+      to: Number(to),
+      limit,
+      offset,
+    });
+
+    res.json({ data: rows, page: { limit, offset, count: rows.length } });
+  } catch (err) {
+    console.error('getHistory error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+async function getSeries(req, res) {
+  try {
+    const { monitorId, from, to } = req.query;
+    const bucketMs = Number(req.query.bucketMs || 60000);
+
+    const errors = assertQuery({ monitorId, from, to, bucketMs });
+    if (errors.length) return res.status(400).json({ errors });
+
+    const series = await historyService.listSeries({
+      monitorId,
+      from: Number(from),
+      to: Number(to),
+      bucketMs,
+    });
+
+    res.json({ data: series, meta: { bucketMs } });
+  } catch (err) {
+    console.error('getSeries error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+module.exports = { getHistory, getSeries };

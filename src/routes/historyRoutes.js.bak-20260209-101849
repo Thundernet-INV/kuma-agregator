@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { getHistory, getSeries } from '../controllers/historyController.js';
+
+const router = Router();
+
+router.get('/', getHistory);
+router.get('/series', getSeries);
+// router.post('/', postEvent); // habilita con --enable-post
+
+export default router;

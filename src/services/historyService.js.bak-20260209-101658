@@ -1,0 +1,22 @@
+const sqlite = require('./storage/sqlite');
+// const redis = require('./storage/redis'); // Si quieres cache híbrido
+
+function init() {
+  sqlite.initSQLite();
+}
+
+async function addEvent(event) {
+  return sqlite.insertHistory(event);
+}
+
+async function listRaw(params) {
+  // Aquí podrías consultar Redis primero y completar con SQLite
+  return sqlite.getHistory(params);
+}
+
+async function listSeries(params) {
+  const bucketMs = Number(params.bucketMs || 60000);
+  return sqlite.getHistoryAgg({ ...params, bucketMs });
+}
+
+module.exports = { init, addEvent, listRaw, listSeries };

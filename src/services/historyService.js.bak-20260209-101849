@@ -1,0 +1,18 @@
+import { initSQLite, insertHistory, getHistory, getHistoryAgg } from './storage/sqlite.js';
+
+export function init() {
+  initSQLite();
+}
+
+export async function addEvent(event) {
+  return insertHistory(event);
+}
+
+export async function listRaw(params) {
+  return getHistory(params);
+}
+
+export async function listSeries(params) {
+  const bucketMs = Number(params.bucketMs || 60000);
+  return getHistoryAgg({ ...params, bucketMs });
+}
