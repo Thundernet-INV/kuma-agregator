@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { initSQLite, insertHistory, getHistory, getHistoryAgg, getAvailableMonitors, getMonitorsByInstance, getStats } from './storage/sqlite.js';
+=======
+import { initSQLite, insertHistory, getHistory, getHistoryAgg } from './storage/sqlite.js';
+>>>>>>> 0e1ae5e (ROLLBACK)
 
 export function init() {
   initSQLite();
@@ -16,6 +20,7 @@ export async function listSeries(params) {
   const bucketMs = Number(params.bucketMs || 60000);
   return getHistoryAgg({ ...params, bucketMs });
 }
+<<<<<<< HEAD
 
 // Nueva función para obtener histórico por monitor
 export async function getMonitorHistory(monitorName, hours = 24) {
@@ -69,3 +74,5 @@ export function normalizeMonitorName(name) {
   if (!name) return '';
   return name.replace(/\s+/g, '_');
 }
+=======
+>>>>>>> 0e1ae5e (ROLLBACK)

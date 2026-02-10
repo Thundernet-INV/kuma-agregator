@@ -7,9 +7,12 @@ import fs from "fs";
 import { Store } from "./store.js";
 import { pollInstance, extract } from "./poller.js";
 import historyRoutes from './routes/historyRoutes.js';
+<<<<<<< HEAD
 import metricHistoryRoutes from './routes/metricHistoryRoutes.js';
 import instanceRoutes from "./routes/instanceRoutes.js";
 import blocklistRoutes from "./routes/blocklistRoutes.js";
+=======
+>>>>>>> 0e1ae5e (ROLLBACK)
 import * as historyService from './services/historyService.js';
 
 const instances = JSON.parse(fs.readFileSync("./instances.json","utf-8"));
@@ -17,6 +20,7 @@ const instances = JSON.parse(fs.readFileSync("./instances.json","utf-8"));
 const app = express();
 historyService.init();
 app.use('/api/history', express.json({ limit: '256kb' }), historyRoutes);
+<<<<<<< HEAD
 app.use('/api/metric-history', metricHistoryRoutes);
 app.use('/api', instanceRoutes);
 app.use('/api', blocklistRoutes);
@@ -32,6 +36,9 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+=======
+app.use(cors());
+>>>>>>> 0e1ae5e (ROLLBACK)
 app.use(express.json({ limit: "256kb" }));
 
 const store = new Store();
@@ -47,6 +54,7 @@ async function cycle() {
       nextInstances.push({ name: inst.name, ok: true });
       for (const m of extracted) {
         nextMonitors.push({ instance: inst.name, ...m });
+<<<<<<< HEAD
         
         // ✅ NUEVO: Guardar en SQLite automáticamente
         await historyService.addEvent({
@@ -68,6 +76,11 @@ async function cycle() {
         responseTime: null,
         message: `Error polling: ${error.message}`
       });
+=======
+      }
+    } catch {
+      nextInstances.push({ name: inst.name, ok: false });
+>>>>>>> 0e1ae5e (ROLLBACK)
     }
   }
 
@@ -84,9 +97,15 @@ if (LOG_TARGET) {
   const hits = snap.monitors.filter(m => (m.info?.monitor_name === LOG_TARGET));
   if (hits.length > 0) {
     const byInst = {}; hits.forEach(h => { byInst[h.instance] = (byInst[h.instance]||0) + 1; });
+<<<<<<< HEAD
     console.log(`[debug] target="${LOG_TARGET}" count=${hits.length} byInstance=${JSON.stringify(byInst)}`);
   } else {
     console.log(`[debug] target="${LOG_TARGET}" count=0`);
+=======
+    console.log(`[debug] target=\"${LOG_TARGET}\" count=${hits.length} byInstance=${JSON.stringify(byInst)}`);
+  } else {
+    console.log(`[debug] target=\"${LOG_TARGET}\" count=0`);
+>>>>>>> 0e1ae5e (ROLLBACK)
   }
 }
 
