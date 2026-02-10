@@ -2,11 +2,14 @@
   "name": "kuma-aggregator",
   "type": "module",
   "version": "1.0.0",
+<<<<<<< HEAD
   "scripts": {
     "start": "node src/index.js",
     "dev": "node src/index.js",
     "test": "echo \"No tests specified\" && exit 0"
   },
+=======
+>>>>>>> 0e1ae5e (ROLLBACK)
   "dependencies": {
     "axios": "^1.6.0",
     "compression": "^1.8.1",
@@ -15,6 +18,10 @@
     "express": "^4.22.1",
     "helmet": "^8.1.0",
     "morgan": "^1.10.1",
+<<<<<<< HEAD
+    "sqlite": "^5.1.1",
+=======
+>>>>>>> 0e1ae5e (ROLLBACK)
     "sqlite3": "^5.1.7"
   }
 }

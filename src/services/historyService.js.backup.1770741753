@@ -1,11 +1,5 @@
 // src/services/historyService.js
-import { 
-    initSQLite, 
-    insertHistory, 
-    getHistory, 
-    getHistoryAgg, 
-    getAvailableMonitors as getAvailableMonitorsFromSQLite 
-} from './storage/sqlite.js';
+import { initSQLite, insertHistory, getHistory, getHistoryAgg, getAvailableMonitors } from './storage/sqlite.js';
 
 export function init() {
     initSQLite();
@@ -26,5 +20,5 @@ export async function listSeries(params) {
 
 // Función auxiliar para obtener monitores disponibles
 export async function getAvailableMonitors() {
-    return await getAvailableMonitorsFromSQLite();
+    return await getAvailableMonitors();
 }
