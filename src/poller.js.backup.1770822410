@@ -15,31 +15,27 @@ export function extract(series) {
 
   for (const s of series) {
     if (!s.labels.monitor_name) continue;
-    
-    // Limpiar nombre (quitar espacios)
-    const name = s.labels.monitor_name.trim();
+    const name = s.labels.monitor_name;
     
     if (!map.has(name)) {
-      // Obtener el tipo de monitor
-      const type = s.labels.monitor_type || 'unknown';
-      
-      // 🟢 IMPORTANTE: Guardar el hostname para monitores PING
-      const hostname = s.labels.monitor_hostname && s.labels.monitor_hostname !== 'null' 
-        ? s.labels.monitor_hostname 
-        : null;
-      
-      // Para PING: usar hostname como URL
       let displayUrl = s.labels.monitor_url || '';
-      if (type === 'ping' && hostname) {
-        displayUrl = hostname;  // 👈 ESTO ES LO QUE FALTABA
+      
+      // 🟢 CORREGIDO: Para monitores PING, usar hostname como URL
+      if (s.labels.monitor_type === 'ping') {
+        displayUrl = s.labels.monitor_hostname || s.labels.monitor_url || 'ping://desconocido';
+      }
+      
+      // 🟢 CORREGIDO: Para monitores DNS, mostrar hostname
+      if (s.labels.monitor_type === 'dns') {
+        displayUrl = s.labels.monitor_hostname || s.labels.monitor_url || 'dns://desconocido';
       }
 
       map.set(name, { 
         info: {
           monitor_name: name,
-          monitor_type: type,
+          monitor_type: s.labels.monitor_type,
           monitor_url: displayUrl,
-          monitor_hostname: hostname,  // 👈 GUARDAR EXPLÍCITAMENTE
+          monitor_hostname: s.labels.monitor_hostname,
           monitor_port: s.labels.monitor_port
         },
         latest: {}
@@ -47,6 +43,7 @@ export function extract(series) {
     }
     
     const entry = map.get(name);
+
     if (s.metric === "monitor_status") entry.latest.status = Number(s.value);
     if (s.metric === "monitor_response_time") entry.latest.responseTime = Number(s.value);
   }
