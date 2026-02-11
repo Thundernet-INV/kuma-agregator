@@ -192,3 +192,29 @@ app.post("/admin/reset-and-reindex", (req, res) => {
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
+// ---- Admin: Limpiar monitores fantasma ----
+app.post("/admin/cleanup-fantasma", async (req, res) => {
+    try {
+        const { cleanupInactiveMonitors } = await import('./services/storage/sqlite.js');
+        const removed = await cleanupInactiveMonitors(1); // 1 minuto
+        
+        // Forzar ciclo para refrescar
+        setImmediate(async () => {
+            try {
+                await cycle();
+            } catch (e) {
+                console.error("[admin/cleanup-fantasma] Error en ciclo:", e);
+            }
+        });
+        
+        res.json({ 
+            ok: true, 
+            message: `✅ Limpieza completada: ${removed} monitores fantasma eliminados`,
+            removed,
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        console.error("[admin/cleanup-fantasma]", e);
+        res.status(500).json({ ok: false, error: String(e) });
+    }
+});
