@@ -1,3 +1,10 @@
 /data/*.db
 data/*.db.backup*
 data/*.db
+node_modules/
+dist/
+.env
+.backup_*
+npm-debug.log*
+yarn-error.log*
+
