@@ -8,3 +8,5 @@ dist/
 npm-debug.log*
 yarn-error.log*
 
+data/*.db
+data/*.db.backup*
