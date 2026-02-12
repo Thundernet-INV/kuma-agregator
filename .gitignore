@@ -10,3 +10,6 @@ yarn-error.log*
 
 data/*.db
 data/*.db.backup*
+*.db
+backup_promedios_*/
+*.db
