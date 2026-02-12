@@ -1,4 +1,4 @@
-// src/services/historyService.js - VERSIÓN LIMPIA SIN DUPLICADOS
+// src/services/historyService.js
 import { 
     ensureSQLite,
     insertHistory, 
@@ -34,8 +34,7 @@ export async function listSeries(params) {
     return getHistoryAgg({ ...params, bucketMs });
 }
 
-// ========== FUNCIONES PARA MONITORES ==========
-
+// 🟢 FUNCIÓN PRINCIPAL PARA LA API - CORREGIDA
 export async function getAvailableMonitors() {
     try {
         const monitors = await getAvailableMonitorsFromDB();
@@ -74,39 +73,15 @@ export async function markActiveMonitors(activeIds) {
     }
 }
 
-// ========== 🆕 FUNCIONES PARA PROMEDIOS DE INSTANCIA (AGREGADAS) ==========
-
-export async function getInstanceAverages(instanceName, hours = 24) {
-    try {
-        // Importar dinámicamente para evitar dependencias circulares
-        const { getInstanceAverages: getAverages } = await import('./storage/sqlite.js');
-        return await getAverages(instanceName, hours);
-    } catch (error) {
-        console.error('[HistoryService] Error obteniendo promedios:', error);
-        return [];
-    }
-}
-
-export async function calculateAllInstanceAverages() {
-    try {
-        const { calculateAllInstanceAverages: calculateAll } = await import('./storage/sqlite.js');
-        return await calculateAll();
-    } catch (error) {
-        console.error('[HistoryService] Error calculando promedios:', error);
-        return [];
-    }
-}
-
-// ========== FUNCIÓN DE DIAGNÓSTICO ==========
-
+// 🟢 NUEVA: Función de diagnóstico
 export async function getStats() {
     try {
         const db = await ensureSQLite();
         const totalMonitors = await db.get('SELECT COUNT(*) as count FROM active_monitors');
         const totalHistory = await db.get('SELECT COUNT(*) as count FROM monitor_history');
         return {
-            activeMonitors: totalMonitors?.count || 0,
-            totalRecords: totalHistory?.count || 0,
+            activeMonitors: totalMonitors.count,
+            totalRecords: totalHistory.count,
             timestamp: Date.now()
         };
     } catch (error) {

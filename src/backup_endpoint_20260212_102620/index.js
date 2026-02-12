@@ -11,9 +11,7 @@ import instanceRoutes from "./routes/instanceRoutes.js";
 import blocklistRoutes from "./routes/blocklistRoutes.js";
 import metricHistoryRoutes from './routes/metricHistoryRoutes.js';
 import * as historyService from './services/historyService.js';
-
-// 🆕 NUEVO: Endpoint de promedios (SIN DUPLICAR)
-import instanceAveragesRoutes from './routes/instanceAveragesRoutes.js';
+import instanceAverageRoutes from './routes/instanceAverageRoutes.js';
 
 const instances = JSON.parse(fs.readFileSync("./instances.json","utf-8"));
 
@@ -31,8 +29,6 @@ app.use(express.json({ limit: "256kb" }));
 
 app.use('/api/history', express.json({ limit: '256kb' }), historyRoutes);
 app.use('/api/metric-history', metricHistoryRoutes);
-// 🆕 NUEVO: Montar endpoint de promedios (UNA SOLA VEZ)
-app.use('/api/instance/averages', instanceAveragesRoutes);
 
 const store = new Store();
 
@@ -48,7 +44,7 @@ async function cycle() {
       for (const m of extracted) {
         nextMonitors.push({ instance: inst.name, ...m });
         
-        // ✅ Guardar en SQLite automáticamente
+        // ✅ NUEVO: Guardar en SQLite automáticamente
         await historyService.addEvent({
           monitorId: `${inst.name}_${m.info?.monitor_name}`.replace(/\s+/g, '_'),
           timestamp: Date.now(),
@@ -60,7 +56,7 @@ async function cycle() {
     } catch (error) {
       nextInstances.push({ name: inst.name, ok: false });
       
-      // ✅ Guardar errores
+      // ✅ NUEVO: También guardar errores
       await historyService.addEvent({
         monitorId: `${inst.name}_error`,
         timestamp: Date.now(),
@@ -128,7 +124,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.listen(8080, () => console.log("Aggregator on 8080"));
+app.listen(8080,()=>console.log("Aggregator on 8080"));
 
 // --- Endpoints de depuración ---
 app.get("/debug/find", (req, res) => {
@@ -152,11 +148,12 @@ app.get("/debug/dump", (req, res) => {
   });
   res.json({ instance: inst || null, count: all.length, items: all });
 });
-
-// ---- Admin: reset del snapshot actual ----
+// --- fin depuración ---
+// ---- Admin: reset del snapshot actual (deja todo vacío) ----
 app.post("/admin/reset", (req, res) => {
   try {
     store.replaceSnapshot({ instances: [], monitors: [] });
+    // Notifica por SSE para que el front se actualice inmediatamente
     store.broadcast("tick", store.snapshot());
     res.json({ ok: true, cleared: true });
   } catch (e) {
@@ -165,7 +162,8 @@ app.post("/admin/reset", (req, res) => {
   }
 });
 
-// ---- Admin: reindex forzado ----
+// ---- Admin: reindex forzado (ejecuta un ciclo completo) ----
+// No bloquea la respuesta; agenda el ciclo en el next tick
 app.post("/admin/reindex", (req, res) => {
   setImmediate(async () => {
     try {
@@ -177,7 +175,7 @@ app.post("/admin/reindex", (req, res) => {
   res.status(202).json({ ok: true, message: "reindex scheduled" });
 });
 
-// ---- Admin: reset + reindex ----
+// ---- Admin: reset + reindex en una sola llamada ----
 app.post("/admin/reset-and-reindex", (req, res) => {
   try {
     store.replaceSnapshot({ instances: [], monitors: [] });
@@ -195,12 +193,13 @@ app.post("/admin/reset-and-reindex", (req, res) => {
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
-
 // ---- Admin: Limpiar monitores fantasma ----
 app.post("/admin/cleanup-fantasma", async (req, res) => {
     try {
         const { cleanupInactiveMonitors } = await import('./services/storage/sqlite.js');
-        const removed = await cleanupInactiveMonitors(1);
+        const removed = await cleanupInactiveMonitors(1); // 1 minuto
+        
+        // Forzar ciclo para refrescar
         setImmediate(async () => {
             try {
                 await cycle();
@@ -208,6 +207,7 @@ app.post("/admin/cleanup-fantasma", async (req, res) => {
                 console.error("[admin/cleanup-fantasma] Error en ciclo:", e);
             }
         });
+        
         res.json({ 
             ok: true, 
             message: `✅ Limpieza completada: ${removed} monitores fantasma eliminados`,

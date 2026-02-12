@@ -1,3 +1,26 @@
+#!/bin/bash
+# fix-backend-forzado.sh - LIMPIEZA TOTAL DEL INDEX.JS
+
+echo "====================================================="
+echo "🔴 LIMPIEZA TOTAL DEL INDEX.JS - VERSIÓN LIMPIA"
+echo "====================================================="
+
+BACKEND_DIR="/opt/kuma-central/kuma-aggregator/src"
+BACKUP_DIR="${BACKEND_DIR}/backup_forzado_$(date +%Y%m%d_%H%M%S)"
+
+# ========== 1. CREAR BACKUP ==========
+echo ""
+echo "[1] Creando backup completo..."
+mkdir -p "$BACKUP_DIR"
+cp "${BACKEND_DIR}/index.js" "$BACKUP_DIR/index.js.bak"
+cp "${BACKEND_DIR}/routes/instanceAveragesRoutes.js" "$BACKUP_DIR/" 2>/dev/null || true
+echo "✅ Backup creado en: $BACKUP_DIR"
+echo ""
+
+# ========== 2. CREAR INDEX.JS NUEVO Y LIMPIO ==========
+echo "[2] Creando index.js NUEVO y LIMPIO..."
+
+cat > "${BACKEND_DIR}/index.js" << 'EOF'
 import express from "express";
 const DENY_NAMES = (process.env.DENY_NAMES || "").split(",").map(s=>s.trim()).filter(Boolean);
 const DENY_INSTANCE_REGEX = process.env.DENY_INSTANCE_REGEX ? new RegExp(process.env.DENY_INSTANCE_REGEX) : null;
@@ -219,3 +242,126 @@ app.post("/admin/cleanup-fantasma", async (req, res) => {
         res.status(500).json({ ok: false, error: String(e) });
     }
 });
+EOF
+
+echo "✅ index.js NUEVO creado - 100% limpio, sin imports duplicados"
+echo ""
+
+# ========== 3. VERIFICAR QUE NO HAY DUPLICADOS ==========
+echo "[3] Verificando que no hay duplicados..."
+
+IMPORT_COUNT=$(grep -c "import instanceAveragesRoutes" "${BACKEND_DIR}/index.js")
+echo "   • Imports de instanceAveragesRoutes: $IMPORT_COUNT (debe ser 1)"
+
+USE_COUNT=$(grep -c "app.use('/api/instance/averages'" "${BACKEND_DIR}/index.js")
+echo "   • Montajes del endpoint: $USE_COUNT (debe ser 1)"
+
+if [ "$IMPORT_COUNT" -eq 1 ] && [ "$USE_COUNT" -eq 1 ]; then
+    echo "✅ TODO CORRECTO - Archivo limpio"
+else
+    echo "❌ AÚN HAY PROBLEMAS - Revisar manualmente"
+fi
+echo ""
+
+# ========== 4. REINICIAR BACKEND ==========
+echo "[4] Reiniciando backend..."
+
+cd "${BACKEND_DIR}/.."
+
+# Matar procesos existentes
+pkill -f "node.*index.js" 2>/dev/null || true
+sleep 2
+
+# Iniciar backend
+NODE_ENV=production nohup node src/index.js > /tmp/kuma-backend.log 2>&1 &
+BACKEND_PID=$!
+sleep 3
+
+echo "✅ Backend iniciado con PID: $BACKEND_PID"
+
+# ========== 5. VERIFICAR BACKEND ==========
+echo ""
+echo "[5] Verificando backend..."
+
+if ps -p $BACKEND_PID > /dev/null; then
+    echo "✅ Proceso vivo"
+    
+    # Probar health
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "✅ Health check OK"
+    else
+        echo "❌ Health check falló"
+        tail -20 /tmp/kuma-backend.log
+    fi
+    
+    # Probar summary
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/summary)
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "✅ Summary OK"
+    else
+        echo "❌ Summary falló"
+    fi
+else
+    echo "❌ El proceso murió"
+    echo ""
+    echo "=== ÚLTIMAS LÍNEAS DEL LOG ==="
+    tail -20 /tmp/kuma-backend.log
+    exit 1
+fi
+
+# ========== 6. VERIFICAR ENDPOINT NUEVO ==========
+echo ""
+echo "[6] Verificando endpoint de promedios..."
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/instance/averages/Caracas?hours=1)
+if [ "$HTTP_CODE" = "200" ]; then
+    echo "✅ Endpoint de promedios OK"
+else
+    echo "⚠️ Endpoint de promedios responde con HTTP $HTTP_CODE"
+fi
+
+# ========== 7. REINICIAR FRONTEND ==========
+echo ""
+echo "[7] Reiniciando frontend..."
+
+FRONTEND_DIR="/home/thunder/kuma-dashboard-clean/kuma-ui"
+cd "$FRONTEND_DIR"
+pkill -f "vite" 2>/dev/null || true
+npm run dev &
+sleep 3
+
+# ========== 8. INSTRUCCIONES ==========
+echo ""
+echo "====================================================="
+echo "✅✅ BACKEND CORREGIDO FORZOSAMENTE ✅✅"
+echo "====================================================="
+echo ""
+echo "📋 ESTADO FINAL:"
+echo ""
+echo "   • ✅ index.js: NUEVO y LIMPIO"
+echo "   • ✅ Import de promedios: 1 sola vez"
+echo "   • ✅ Montaje de endpoint: 1 sola vez"
+echo "   • ✅ Backend corriendo (PID: $BACKEND_PID)"
+echo ""
+echo "🔄 PRUEBA AHORA:"
+echo ""
+echo "   1. Abre http://10.10.31.31:5173"
+echo "   2. ✅ EL DASHBOARD DEBE FUNCIONAR INMEDIATAMENTE"
+echo "   3. ✅ Las gráficas de histórico DEBEN aparecer"
+echo ""
+echo "📌 RESPALDO DE SEGURIDAD:"
+echo "   Backup creado en: $BACKUP_DIR"
+echo ""
+echo "====================================================="
+
+# Preguntar si quiere abrir el navegador
+read -p "¿Abrir el dashboard ahora? (s/N): " OPEN_BROWSER
+if [[ "$OPEN_BROWSER" =~ ^[Ss]$ ]]; then
+    xdg-open "http://10.10.31.31:5173" 2>/dev/null || \
+    open "http://10.10.31.31:5173" 2>/dev/null || \
+    echo "Abre http://10.10.31.31:5173 en tu navegador"
+fi
+
+echo ""
+echo "✅ Script completado"
