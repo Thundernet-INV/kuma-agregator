@@ -1,0 +1,14 @@
+
+[
+  { "name": "San Felipe",      "baseUrl": "http://10.10.25.150:3001", "apiKey": "uk1_6goV5ybxSsfQftyVv-8zrRXZK9zTiFbpFRiU8-Hr" },
+  { "name": "Guanare",         "baseUrl": "http://10.10.15.100:3001", "apiKey": "uk1_hzKSuCbWyfutAaakln4GZOg_vpzwX8zxFUw4f99r" },
+  { "name": "Caracas",         "baseUrl": "http://10.10.30.123:3001", "apiKey": "uk1_SJENmfv7aYltaADr7a7gkQVx8h5Du33x7nLzCQpj" },
+  { "name": "Barquisimeto",    "baseUrl": "http://10.10.19.83:3001",  "apiKey": "uk1_FGePM4Aw9AZLbZMZuCv30NlQEwTLpdhijv-48TSX" },
+  { "name": "San Carlos",      "baseUrl": "http://10.10.37.150:3001", "apiKey": "uk1_3GqYyxSLPOcTbJCPluNVSy_h3p05VcPQBpQTKg8G" },
+  { "name": "Acarigua",        "baseUrl": "http://10.10.22.150:3001", "apiKey": "uk1_Ew0Wk_rCIHAooFJ2p53c-7lmYN3Grbq4MAD0isFh" },
+  { "name": "Barinas",         "baseUrl": "http://10.10.5.119:3001",  "apiKey": "uk1_BWkSZV-FaNO3RD2GoaRLKfhnJlXGKWJ6h9Q3TT1_" },
+  { "name": "San Fernando",    "baseUrl": "http://10.10.23.70:3001",  "apiKey": "uk1_7y4snzI_UU3cagYNSX_eXcl7OX1UfTo59ehoBB4p" },
+  { "name": "Chichiriviche",   "baseUrl": "http://10.10.26.150:3001", "apiKey": "uk1_5EjIyxyi7jn1JZrq5GKunDiiK-p6Qxj7EQ5-K3CT" },
+  { "name": "Tucacas",         "baseUrl": "http://10.10.28.10:3001",  "apiKey": "uk1_YmTnky-uRBtVqkndA7Jp-6evmbg85qMaxfuRGvUB" },
+  { "name": "Energia",         "baseUrl": "http://10.10.31.9:3001",  "apiKey":  "uk1_7EyLAWbeWV0c9vthT-0rUUoMxC90dN2Gd3J6pOEJ"}
+]
