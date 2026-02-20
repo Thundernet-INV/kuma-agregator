@@ -30,25 +30,12 @@ router.get('/plantas', (req, res) => {
     });
 });
 
-// GET /api/combustible/sedes - Listar sedes disponibles
-router.get('/sedes', (req, res) => {
-    res.json({
-        success: true,
-        sedes_disponibles: [
-            'San Felipe', 'Guanare', 'Caracas', 'Barquisimeto', 
-            'San Carlos', 'Acarigua', 'Barinas', 'San Fernando',
-            'Chichiriviche', 'Tucacas', 'Energia'
-        ]
-    });
-});
-
-// ========== NUEVO ENDPOINT: GET /api/combustible/consumo/:nombreMonitor ==========
+// GET /api/combustible/consumo/:nombreMonitor
 router.get('/consumo/:nombreMonitor', (req, res) => {
     try {
         const nombreMonitor = decodeURIComponent(req.params.nombreMonitor);
         const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
         
-        // Obtener configuración de la planta
         db.get(
             'SELECT * FROM plantas_combustible_config WHERE nombre_monitor = ?',
             [nombreMonitor],
@@ -63,7 +50,6 @@ router.get('/consumo/:nombreMonitor', (req, res) => {
                     return res.status(404).json({ success: false, error: 'Planta no encontrada' });
                 }
                 
-                // Buscar si hay un evento activo (planta encendida)
                 db.get(
                     'SELECT timestamp_inicio FROM planta_eventos WHERE nombre_monitor = ? AND timestamp_fin IS NULL',
                     [nombreMonitor],
@@ -80,7 +66,6 @@ router.get('/consumo/:nombreMonitor', (req, res) => {
                             consumoActual = (duracionSeg / 3600) * config.consumo_lh;
                         }
                         
-                        // Calcular histórico total
                         db.get(
                             'SELECT COALESCE(SUM(consumo_litros), 0) as total FROM planta_eventos WHERE nombre_monitor = ? AND timestamp_fin IS NOT NULL',
                             [nombreMonitor],
@@ -111,7 +96,7 @@ router.get('/consumo/:nombreMonitor', (req, res) => {
     }
 });
 
-// ========== NUEVO ENDPOINT: POST /api/combustible/evento ==========
+// POST /api/combustible/evento
 router.post('/evento', (req, res) => {
     try {
         const { nombre_monitor, estado } = req.body;
@@ -127,7 +112,6 @@ router.post('/evento', (req, res) => {
         const ahora = Date.now();
         
         if (estado === 'UP') {
-            // Verificar si ya hay un evento UP activo
             db.get(
                 'SELECT id FROM planta_eventos WHERE nombre_monitor = ? AND timestamp_fin IS NULL',
                 [nombre_monitor],
@@ -146,7 +130,7 @@ router.post('/evento', (req, res) => {
                                 if (err) {
                                     return res.status(500).json({ success: false, error: err.message });
                                 }
-                                console.log(`🔌 ${nombre_monitor} ENCENDIDA (simulado)`);
+                                console.log(`✅ ${nombre_monitor} ENCENDIDA`);
                                 res.json({ success: true, message: 'Planta encendida' });
                             }
                         );
@@ -157,7 +141,6 @@ router.post('/evento', (req, res) => {
                 }
             );
         } else { // DOWN
-            // Buscar evento UP activo
             db.get(
                 'SELECT id, timestamp_inicio FROM planta_eventos WHERE nombre_monitor = ? AND timestamp_fin IS NULL',
                 [nombre_monitor],
@@ -170,7 +153,6 @@ router.post('/evento', (req, res) => {
                     if (row) {
                         const duracionSeg = (ahora - row.timestamp_inicio) / 1000;
                         
-                        // Obtener consumo de la planta
                         db.get(
                             'SELECT consumo_lh FROM plantas_combustible_config WHERE nombre_monitor = ?',
                             [nombre_monitor],
@@ -214,7 +196,7 @@ router.post('/evento', (req, res) => {
     }
 });
 
-// ========== ENDPOINT PARA RESETEAR (OPCIONAL) ==========
+// POST /api/combustible/reset/:nombreMonitor
 router.post('/reset/:nombreMonitor', (req, res) => {
     try {
         const nombreMonitor = decodeURIComponent(req.params.nombreMonitor);
@@ -240,9 +222,7 @@ router.post('/reset/:nombreMonitor', (req, res) => {
     }
 });
 
-// ========== ENDPOINTS DE CONSUMO POR PERÍODO ==========
-
-// GET /api/combustible/consumo-periodo/:nombreMonitor?periodo=mensual
+// GET /api/combustible/consumo-periodo/:nombreMonitor
 router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
   try {
     const nombreMonitor = decodeURIComponent(req.params.nombreMonitor);
@@ -328,10 +308,12 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
   }
 });
 
-// GET /api/combustible/resumen-global?periodo=mensual
+// ========== ENDPOINT CORREGIDO: GET /api/combustible/resumen-global ==========
 router.get('/resumen-global', (req, res) => {
   try {
-    const { periodo = 'mensual' } = req.query;
+    const { periodo = 'mensual', sede } = req.query;
+    console.log(`📊 Resumen global - periodo: ${periodo}, sede: ${sede || 'todas'}`);
+    
     const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
     
     const ahora = Date.now();
@@ -345,8 +327,10 @@ router.get('/resumen-global', (req, res) => {
       default: desde = ahora - (30 * 24 * 60 * 60 * 1000);
     }
     
-    // Consumo por sede
-    db.all(`
+    // ============================================
+    // 1. CONSUMO POR SEDE (filtrado si aplica)
+    // ============================================
+    let querySedes = `
       SELECT 
         pc.sede,
         COUNT(DISTINCT pe.nombre_monitor) as plantas_activas,
@@ -356,16 +340,29 @@ router.get('/resumen-global', (req, res) => {
       LEFT JOIN planta_eventos pe ON pe.nombre_monitor = pc.nombre_monitor 
         AND pe.timestamp_inicio >= ? 
         AND pe.timestamp_fin IS NOT NULL
-      GROUP BY pc.sede
-      ORDER BY total_consumo DESC
-    `, [desde], (err, sedes) => {
+    `;
+    
+    const paramsSedes = [desde];
+    
+    // Si hay filtro por sede, agregar WHERE
+    if (sede && sede !== 'undefined' && sede !== 'todas' && sede !== '') {
+      querySedes += ` WHERE pc.sede = ?`;
+      paramsSedes.push(sede);
+    }
+    
+    querySedes += ` GROUP BY pc.sede ORDER BY total_consumo DESC`;
+    
+    db.all(querySedes, paramsSedes, (err, sedes) => {
       if (err) {
         db.close();
+        console.error('Error en consulta de sedes:', err);
         return res.status(500).json({ success: false, error: err.message });
       }
       
-      // Top 10 plantas por consumo
-      db.all(`
+      // ============================================
+      // 2. TOP 10 PLANTAS (filtrado por la misma sede)
+      // ============================================
+      let queryTop = `
         SELECT 
           pe.nombre_monitor,
           pc.sede,
@@ -373,33 +370,60 @@ router.get('/resumen-global', (req, res) => {
           SUM(pe.consumo_litros) as total_consumo
         FROM planta_eventos pe
         JOIN plantas_combustible_config pc ON pc.nombre_monitor = pe.nombre_monitor
-        WHERE pe.timestamp_inicio >= ? AND pe.timestamp_fin IS NOT NULL
-        GROUP BY pe.nombre_monitor
-        ORDER BY total_consumo DESC
-        LIMIT 10
-      `, [desde], (err, topPlantas) => {
-        db.close();
+        WHERE pe.timestamp_inicio >= ? 
+          AND pe.timestamp_fin IS NOT NULL
+      `;
+      
+      const paramsTop = [desde];
+      
+      if (sede && sede !== 'undefined' && sede !== 'todas' && sede !== '') {
+        queryTop += ` AND pc.sede = ?`;
+        paramsTop.push(sede);
+      }
+      
+      queryTop += ` GROUP BY pe.nombre_monitor ORDER BY total_consumo DESC LIMIT 10`;
+      
+      db.all(queryTop, paramsTop, (err, topPlantas) => {
         if (err) {
+          db.close();
+          console.error('Error en consulta de top plantas:', err);
           return res.status(500).json({ success: false, error: err.message });
         }
         
+        // ============================================
+        // 3. CALCULAR TOTALES
+        // ============================================
+        const totalSedes = sedes.length;
+        const totalConsumo = sedes.reduce((sum, s) => sum + (s.total_consumo || 0), 0);
+        const totalEventos = sedes.reduce((sum, s) => sum + (s.total_eventos || 0), 0);
+        
+        // ============================================
+        // 4. RESPUESTA
+        // ============================================
         res.json({
           success: true,
           periodo: periodo,
+          sede_filtrada: sede || 'todas',
           resumen: {
-            total_sedes: sedes.length,
-            total_consumo: sedes.reduce((sum, s) => sum + (s.total_consumo || 0), 0),
-            total_eventos: sedes.reduce((sum, s) => sum + (s.total_eventos || 0), 0)
+            total_sedes: totalSedes,
+            total_consumo: parseFloat(totalConsumo.toFixed(2)),
+            total_eventos: totalEventos
           },
           consumo_por_sede: sedes.map(s => ({
-            ...s,
+            sede: s.sede,
+            plantas_activas: s.plantas_activas,
+            total_eventos: s.total_eventos,
             total_consumo: s.total_consumo ? parseFloat(s.total_consumo.toFixed(2)) : 0
           })),
           top_plantas: topPlantas.map(p => ({
-            ...p,
+            nombre_monitor: p.nombre_monitor,
+            sede: p.sede,
+            eventos: p.eventos,
             total_consumo: p.total_consumo ? parseFloat(p.total_consumo.toFixed(2)) : 0
           }))
         });
+        
+        db.close();
       });
     });
     
@@ -407,6 +431,150 @@ router.get('/resumen-global', (req, res) => {
     console.error('Error en /resumen-global:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// ========== ENDPOINT PARA CREAR NUEVA PLANTA ==========
+router.post('/plantas', (req, res) => {
+    try {
+        const { nombre_monitor, sede, modelo, consumo_lh } = req.body;
+        
+        if (!nombre_monitor) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'nombre_monitor es requerido' 
+            });
+        }
+        
+        const db = new sqlite3.Database(DB_PATH);
+        
+        db.get(
+            'SELECT * FROM plantas_combustible_config WHERE nombre_monitor = ?',
+            [nombre_monitor],
+            (err, row) => {
+                if (err) {
+                    db.close();
+                    return res.status(500).json({ success: false, error: err.message });
+                }
+                
+                if (row) {
+                    db.close();
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Ya existe una planta con ese nombre' 
+                    });
+                }
+                
+                db.run(
+                    `INSERT INTO plantas_combustible_config 
+                     (nombre_monitor, sede, modelo, consumo_lh) 
+                     VALUES (?, ?, ?, ?)`,
+                    [nombre_monitor, sede || 'Sin sede', modelo || '46-GI-30FW', consumo_lh || 7.0],
+                    function(err) {
+                        db.close();
+                        if (err) {
+                            return res.status(500).json({ success: false, error: err.message });
+                        }
+                        
+                        res.json({ 
+                            success: true, 
+                            message: 'Planta creada correctamente',
+                            id: this.lastID
+                        });
+                    }
+                );
+            }
+        );
+        
+    } catch (error) {
+        console.error('Error en POST /plantas:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ========== ENDPOINT PARA ACTUALIZAR PLANTA (PUT) ==========
+router.put('/plantas/:nombre', (req, res) => {
+    try {
+        const nombreOriginal = decodeURIComponent(req.params.nombre);
+        const { nombre_monitor, sede, modelo, consumo_lh } = req.body;
+        
+        console.log('📝 Actualizando planta:', { 
+            original: nombreOriginal,
+            nuevo: nombre_monitor, 
+            sede, 
+            modelo, 
+            consumo_lh 
+        });
+        
+        const db = new sqlite3.Database(DB_PATH);
+        
+        db.get(
+            'SELECT * FROM plantas_combustible_config WHERE nombre_monitor = ?',
+            [nombreOriginal],
+            (err, row) => {
+                if (err) {
+                    db.close();
+                    return res.status(500).json({ success: false, error: err.message });
+                }
+                
+                if (!row) {
+                    db.close();
+                    return res.status(404).json({ 
+                        success: false, 
+                        error: `Planta no encontrada: ${nombreOriginal}` 
+                    });
+                }
+                
+                const nuevoNombre = nombre_monitor || row.nombre_monitor;
+                const nuevaSede = sede || row.sede;
+                const nuevoModelo = modelo || row.modelo;
+                const nuevoConsumo = consumo_lh !== undefined ? consumo_lh : row.consumo_lh;
+                
+                db.run(
+                    `UPDATE plantas_combustible_config 
+                     SET nombre_monitor = ?, sede = ?, modelo = ?, consumo_lh = ? 
+                     WHERE nombre_monitor = ?`,
+                    [nuevoNombre, nuevaSede, nuevoModelo, nuevoConsumo, nombreOriginal],
+                    function(err) {
+                        if (err) {
+                            db.close();
+                            return res.status(500).json({ success: false, error: err.message });
+                        }
+                        
+                        console.log(`✅ Planta actualizada: ${nombreOriginal} → ${nuevoNombre}`);
+                        
+                        if (nombreOriginal !== nuevoNombre) {
+                            db.run(
+                                `UPDATE planta_eventos 
+                                 SET nombre_monitor = ? 
+                                 WHERE nombre_monitor = ?`,
+                                [nuevoNombre, nombreOriginal],
+                                (err) => {
+                                    db.close();
+                                    if (err) {
+                                        console.error('Error actualizando eventos:', err);
+                                    }
+                                    res.json({ 
+                                        success: true, 
+                                        message: 'Planta actualizada correctamente'
+                                    });
+                                }
+                            );
+                        } else {
+                            db.close();
+                            res.json({ 
+                                success: true, 
+                                message: 'Planta actualizada correctamente'
+                            });
+                        }
+                    }
+                );
+            }
+        );
+        
+    } catch (error) {
+        console.error('Error en PUT /plantas/:nombre:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 export default router;
