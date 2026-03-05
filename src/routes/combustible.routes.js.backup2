@@ -1,4 +1,4 @@
-// /opt/kuma-central/kuma-aggregator/src/routes/combustible.routes.js
+// src/routes/combustible.routes.js
 import { Router } from 'express';
 import sqlite3 from 'sqlite3';
 import path from 'path';
@@ -155,7 +155,7 @@ router.post('/evento', (req, res) => {
                         
                         db.get(
                             'SELECT consumo_lh FROM plantas_combustible_config WHERE nombre_monitor = ?',
-                            [nombreMonitor],
+                            [nombre_monitor],
                             (err, config) => {
                                 if (err) {
                                     db.close();
@@ -222,64 +222,39 @@ router.post('/reset/:nombreMonitor', (req, res) => {
     }
 });
 
-// ========== ENDPOINT CORREGIDO: GET /api/combustible/consumo-periodo/:nombreMonitor ==========
+// GET /api/combustible/consumo-periodo/:nombreMonitor
 router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
   try {
     const nombreMonitor = decodeURIComponent(req.params.nombreMonitor);
-    const { periodo = 'diario', fecha_inicio, fecha_fin } = req.query;
-    
-    console.log(`📊 Consumo período - ${nombreMonitor}:`, { periodo, fecha_inicio, fecha_fin });
-    
+    const { periodo = 'diario' } = req.query;
     const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
     
     const ahora = Date.now();
     let desde;
-    let hasta = ahora;
     let agrupacion;
     
-    // ============================================
-    // 1. DETERMINAR RANGO DE FECHAS (CORREGIDO)
-    // ============================================
-    if (fecha_inicio && fecha_fin) {
-      // Usar rango personalizado
-      desde = new Date(fecha_inicio).getTime();
-      hasta = new Date(fecha_fin).getTime() + (24 * 60 * 60 * 1000) - 1;
-      agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
-      console.log(`   📅 Rango personalizado: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
-    } else {
-      // Usar período predefinido
-      switch(periodo) {
-        case 'diario':
-          desde = ahora - (1 * 24 * 60 * 60 * 1000); // Solo HOY
-          agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
-          console.log('   📅 Modo DIARIO: solo hoy');
-          break;
-        case 'semanal':
-          desde = ahora - (7 * 24 * 60 * 60 * 1000); // Últimos 7 días
-          agrupacion = "strftime('%Y-%W', datetime(timestamp_inicio/1000, 'unixepoch'))";
-          console.log('   📅 Modo SEMANAL: últimos 7 días');
-          break;
-        case 'mensual':
-          desde = ahora - (30 * 24 * 60 * 60 * 1000); // Últimos 30 días
-          agrupacion = "strftime('%Y-%m', datetime(timestamp_inicio/1000, 'unixepoch'))";
-          console.log('   📅 Modo MENSUAL: últimos 30 días');
-          break;
-        case 'anual':
-          desde = ahora - (365 * 24 * 60 * 60 * 1000); // Últimos 365 días
-          agrupacion = "strftime('%Y', datetime(timestamp_inicio/1000, 'unixepoch'))";
-          console.log('   📅 Modo ANUAL: últimos 365 días');
-          break;
-        default:
-          desde = ahora - (30 * 24 * 60 * 60 * 1000);
-          agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
-      }
+    switch(periodo) {
+      case 'diario':
+        desde = ahora - (30 * 24 * 60 * 60 * 1000);
+        agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
+        break;
+      case 'semanal':
+        desde = ahora - (52 * 7 * 24 * 60 * 60 * 1000);
+        agrupacion = "strftime('%Y-%W', datetime(timestamp_inicio/1000, 'unixepoch'))";
+        break;
+      case 'mensual':
+        desde = ahora - (12 * 30 * 24 * 60 * 60 * 1000);
+        agrupacion = "strftime('%Y-%m', datetime(timestamp_inicio/1000, 'unixepoch'))";
+        break;
+      case 'anual':
+        desde = 0;
+        agrupacion = "strftime('%Y', datetime(timestamp_inicio/1000, 'unixepoch'))";
+        break;
+      default:
+        desde = ahora - (30 * 24 * 60 * 60 * 1000);
+        agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
     }
     
-    console.log(`   📅 Rango final: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
-    
-    // ============================================
-    // 2. CONSULTAR DATOS (FILTRADOS POR FECHA)
-    // ============================================
     const query = `
       SELECT 
         ${agrupacion} as periodo,
@@ -291,13 +266,12 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
       FROM planta_eventos 
       WHERE nombre_monitor = ? 
         AND timestamp_inicio >= ? 
-        AND timestamp_inicio <= ?
         AND timestamp_fin IS NOT NULL
       GROUP BY periodo
       ORDER BY periodo DESC
     `;
     
-    db.all(query, [nombreMonitor, desde, hasta], (err, rows) => {
+    db.all(query, [nombreMonitor, desde], (err, rows) => {
       if (err) {
         console.error('Error en consulta:', err);
         db.close();
@@ -307,16 +281,10 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
       const totalConsumo = rows.reduce((sum, r) => sum + (r.total_consumo || 0), 0);
       const totalEventos = rows.reduce((sum, r) => sum + (r.eventos || 0), 0);
       
-      console.log(`   ✅ ${rows.length} períodos encontrados, total: ${totalConsumo.toFixed(2)}L`);
-      
       res.json({
         success: true,
         nombre_monitor: nombreMonitor,
-        periodo: fecha_inicio && fecha_fin ? 'personalizado' : periodo,
-        rango_fechas: fecha_inicio && fecha_fin ? {
-          inicio: fecha_inicio,
-          fin: fecha_fin
-        } : null,
+        periodo: periodo,
         datos: rows.map(r => ({
           periodo: r.periodo,
           eventos: r.eventos,
@@ -343,51 +311,24 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
 // ========== ENDPOINT CORREGIDO: GET /api/combustible/resumen-global ==========
 router.get('/resumen-global', (req, res) => {
   try {
-    const { periodo = 'mensual', sede, fecha_inicio, fecha_fin } = req.query;
-    console.log('📊 Resumen global -', { periodo, sede, fecha_inicio, fecha_fin });
+    const { periodo = 'mensual', sede } = req.query;
+    console.log(`📊 Resumen global - periodo: ${periodo}, sede: ${sede || 'todas'}`);
     
     const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
     
     const ahora = Date.now();
     let desde;
-    let hasta = ahora;
     
-    // ============================================
-    // 1. DETERMINAR RANGO DE FECHAS (CORREGIDO)
-    // ============================================
-    if (fecha_inicio && fecha_fin) {
-      // Usar rango personalizado
-      desde = new Date(fecha_inicio).getTime();
-      hasta = new Date(fecha_fin).getTime() + (24 * 60 * 60 * 1000) - 1;
-      console.log(`   📅 Rango personalizado: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
-    } else {
-      // Usar período predefinido - ¡AHORA SÍ FILTRA!
-      switch(periodo) {
-        case 'diario':
-          desde = ahora - (1 * 24 * 60 * 60 * 1000); // Solo HOY
-          console.log('   📅 Modo DIARIO: solo hoy');
-          break;
-        case 'semanal':
-          desde = ahora - (7 * 24 * 60 * 60 * 1000); // Últimos 7 días
-          console.log('   📅 Modo SEMANAL: últimos 7 días');
-          break;
-        case 'mensual':
-          desde = ahora - (30 * 24 * 60 * 60 * 1000); // Últimos 30 días
-          console.log('   📅 Modo MENSUAL: últimos 30 días');
-          break;
-        case 'anual':
-          desde = ahora - (365 * 24 * 60 * 60 * 1000); // Últimos 365 días
-          console.log('   📅 Modo ANUAL: últimos 365 días');
-          break;
-        default:
-          desde = ahora - (30 * 24 * 60 * 60 * 1000);
-      }
+    switch(periodo) {
+      case 'diario': desde = ahora - (30 * 24 * 60 * 60 * 1000); break;
+      case 'semanal': desde = ahora - (52 * 7 * 24 * 60 * 60 * 1000); break;
+      case 'mensual': desde = ahora - (12 * 30 * 24 * 60 * 60 * 1000); break;
+      case 'anual': desde = 0; break;
+      default: desde = ahora - (30 * 24 * 60 * 60 * 1000);
     }
     
-    console.log(`   📅 Rango final: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
-    
     // ============================================
-    // 2. CONSUMO POR SEDE (CON FILTRO DE FECHAS)
+    // 1. CONSUMO POR SEDE (filtrado si aplica)
     // ============================================
     let querySedes = `
       SELECT 
@@ -398,12 +339,12 @@ router.get('/resumen-global', (req, res) => {
       FROM plantas_combustible_config pc
       LEFT JOIN planta_eventos pe ON pe.nombre_monitor = pc.nombre_monitor 
         AND pe.timestamp_inicio >= ? 
-        AND pe.timestamp_inicio <= ?
         AND pe.timestamp_fin IS NOT NULL
     `;
     
-    const paramsSedes = [desde, hasta];
+    const paramsSedes = [desde];
     
+    // Si hay filtro por sede, agregar WHERE
     if (sede && sede !== 'undefined' && sede !== 'todas' && sede !== '') {
       querySedes += ` WHERE pc.sede = ?`;
       paramsSedes.push(sede);
@@ -418,10 +359,8 @@ router.get('/resumen-global', (req, res) => {
         return res.status(500).json({ success: false, error: err.message });
       }
       
-      console.log(`   📊 Sedes encontradas: ${sedes.length}`);
-      
       // ============================================
-      // 3. TOP 10 PLANTAS (CON FILTRO DE FECHAS)
+      // 2. TOP 10 PLANTAS (filtrado por la misma sede)
       // ============================================
       let queryTop = `
         SELECT 
@@ -432,11 +371,10 @@ router.get('/resumen-global', (req, res) => {
         FROM planta_eventos pe
         JOIN plantas_combustible_config pc ON pc.nombre_monitor = pe.nombre_monitor
         WHERE pe.timestamp_inicio >= ? 
-          AND pe.timestamp_inicio <= ?
           AND pe.timestamp_fin IS NOT NULL
       `;
       
-      const paramsTop = [desde, hasta];
+      const paramsTop = [desde];
       
       if (sede && sede !== 'undefined' && sede !== 'todas' && sede !== '') {
         queryTop += ` AND pc.sede = ?`;
@@ -452,34 +390,36 @@ router.get('/resumen-global', (req, res) => {
           return res.status(500).json({ success: false, error: err.message });
         }
         
-        // Filtrar solo sedes con consumo
-        const sedesConConsumo = sedes.filter(s => s.total_consumo > 0);
-        const totalConsumo = sedesConConsumo.reduce((sum, s) => sum + (s.total_consumo || 0), 0);
-        const totalEventos = sedesConConsumo.reduce((sum, s) => sum + (s.total_eventos || 0), 0);
+        // ============================================
+        // 3. CALCULAR TOTALES
+        // ============================================
+        const totalSedes = sedes.length;
+        const totalConsumo = sedes.reduce((sum, s) => sum + (s.total_consumo || 0), 0);
+        const totalEventos = sedes.reduce((sum, s) => sum + (s.total_eventos || 0), 0);
         
-        console.log(`   ✅ Total consumo: ${totalConsumo.toFixed(2)}L, Eventos: ${totalEventos}`);
-        
+        // ============================================
+        // 4. RESPUESTA
+        // ============================================
         res.json({
           success: true,
-          periodo: fecha_inicio && fecha_fin ? 'personalizado' : periodo,
+          periodo: periodo,
           sede_filtrada: sede || 'todas',
-          rango_fechas: fecha_inicio && fecha_fin ? { inicio: fecha_inicio, fin: fecha_fin } : null,
           resumen: {
-            total_sedes: sedesConConsumo.length,
+            total_sedes: totalSedes,
             total_consumo: parseFloat(totalConsumo.toFixed(2)),
             total_eventos: totalEventos
           },
-          consumo_por_sede: sedesConConsumo.map(s => ({
+          consumo_por_sede: sedes.map(s => ({
             sede: s.sede,
             plantas_activas: s.plantas_activas,
             total_eventos: s.total_eventos,
-            total_consumo: parseFloat(s.total_consumo.toFixed(2))
+            total_consumo: s.total_consumo ? parseFloat(s.total_consumo.toFixed(2)) : 0
           })),
           top_plantas: topPlantas.map(p => ({
             nombre_monitor: p.nombre_monitor,
             sede: p.sede,
             eventos: p.eventos,
-            total_consumo: parseFloat(p.total_consumo.toFixed(2))
+            total_consumo: p.total_consumo ? parseFloat(p.total_consumo.toFixed(2)) : 0
           }))
         });
         
@@ -638,3 +578,230 @@ router.put('/plantas/:nombre', (req, res) => {
 });
 
 export default router;
+
+// ========== ENDPOINT CORREGIDO: GET /api/combustible/resumen-global ==========
+router.get('/resumen-global', (req, res) => {
+  try {
+    const { periodo = 'mensual', sede, fecha_inicio, fecha_fin } = req.query;
+    console.log('📊 Resumen global -', { periodo, sede, fecha_inicio, fecha_fin });
+    
+    const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
+    
+    const ahora = Date.now();
+    let desde;
+    let hasta = ahora;
+    
+    // ============================================
+    // 1. DETERMINAR RANGO DE FECHAS
+    // ============================================
+    if (fecha_inicio && fecha_fin) {
+      desde = new Date(fecha_inicio).getTime();
+      hasta = new Date(fecha_fin).getTime() + (24 * 60 * 60 * 1000) - 1;
+      console.log(`   📅 Rango: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
+    } else {
+      switch(periodo) {
+        case 'diario': desde = ahora - (30 * 24 * 60 * 60 * 1000); break;
+        case 'semanal': desde = ahora - (52 * 7 * 24 * 60 * 60 * 1000); break;
+        case 'mensual': desde = ahora - (12 * 30 * 24 * 60 * 60 * 1000); break;
+        case 'anual': desde = 0; break;
+        default: desde = ahora - (30 * 24 * 60 * 60 * 1000);
+      }
+    }
+    
+    // ============================================
+    // 2. CONSUMO POR SEDE
+    // ============================================
+    let querySedes = `
+      SELECT 
+        pc.sede,
+        COUNT(DISTINCT pe.nombre_monitor) as plantas_activas,
+        COUNT(pe.id) as total_eventos,
+        SUM(pe.consumo_litros) as total_consumo
+      FROM plantas_combustible_config pc
+      LEFT JOIN planta_eventos pe ON pe.nombre_monitor = pc.nombre_monitor 
+        AND pe.timestamp_inicio >= ? 
+        AND pe.timestamp_inicio <= ?
+        AND pe.timestamp_fin IS NOT NULL
+    `;
+    
+    const paramsSedes = [desde, hasta];
+    
+    if (sede && sede !== 'undefined' && sede !== 'todas' && sede !== '') {
+      querySedes += ` WHERE pc.sede = ?`;
+      paramsSedes.push(sede);
+    }
+    
+    querySedes += ` GROUP BY pc.sede ORDER BY total_consumo DESC`;
+    
+    db.all(querySedes, paramsSedes, (err, sedes) => {
+      if (err) {
+        db.close();
+        return res.status(500).json({ success: false, error: err.message });
+      }
+      
+      // ============================================
+      // 3. TOP 10 PLANTAS
+      // ============================================
+      let queryTop = `
+        SELECT 
+          pe.nombre_monitor,
+          pc.sede,
+          COUNT(pe.id) as eventos,
+          SUM(pe.consumo_litros) as total_consumo
+        FROM planta_eventos pe
+        JOIN plantas_combustible_config pc ON pc.nombre_monitor = pe.nombre_monitor
+        WHERE pe.timestamp_inicio >= ? 
+          AND pe.timestamp_inicio <= ?
+          AND pe.timestamp_fin IS NOT NULL
+      `;
+      
+      const paramsTop = [desde, hasta];
+      
+      if (sede && sede !== 'undefined' && sede !== 'todas' && sede !== '') {
+        queryTop += ` AND pc.sede = ?`;
+        paramsTop.push(sede);
+      }
+      
+      queryTop += ` GROUP BY pe.nombre_monitor ORDER BY total_consumo DESC LIMIT 10`;
+      
+      db.all(queryTop, paramsTop, (err, topPlantas) => {
+        if (err) {
+          db.close();
+          return res.status(500).json({ success: false, error: err.message });
+        }
+        
+        // Calcular totales
+        const sedesConConsumo = sedes.filter(s => s.total_consumo > 0);
+        const totalConsumo = sedesConConsumo.reduce((sum, s) => sum + (s.total_consumo || 0), 0);
+        
+        res.json({
+          success: true,
+          periodo: fecha_inicio && fecha_fin ? 'personalizado' : periodo,
+          sede_filtrada: sede || 'todas',
+          rango_fechas: fecha_inicio && fecha_fin ? { inicio: fecha_inicio, fin: fecha_fin } : null,
+          resumen: {
+            total_sedes: sedesConConsumo.length,
+            total_consumo: parseFloat(totalConsumo.toFixed(2)),
+            total_eventos: sedesConConsumo.reduce((sum, s) => sum + s.total_eventos, 0)
+          },
+          consumo_por_sede: sedesConConsumo.map(s => ({
+            sede: s.sede,
+            plantas_activas: s.plantas_activas,
+            total_eventos: s.total_eventos,
+            total_consumo: parseFloat(s.total_consumo.toFixed(2))
+          })),
+          top_plantas: topPlantas.map(p => ({
+            nombre_monitor: p.nombre_monitor,
+            sede: p.sede,
+            eventos: p.eventos,
+            total_consumo: parseFloat(p.total_consumo.toFixed(2))
+          }))
+        });
+        
+        db.close();
+      });
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ========== ENDPOINT CORREGIDO: GET /api/combustible/consumo-periodo/:nombreMonitor ==========
+router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
+  try {
+    const nombreMonitor = decodeURIComponent(req.params.nombreMonitor);
+    const { periodo = 'diario', fecha_inicio, fecha_fin } = req.query;
+    
+    console.log(`📊 Consumo ${nombreMonitor}:`, { periodo, fecha_inicio, fecha_fin });
+    
+    const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
+    
+    const ahora = Date.now();
+    let desde;
+    let hasta = ahora;
+    let agrupacion;
+    
+    // ============================================
+    // 1. DETERMINAR RANGO DE FECHAS
+    // ============================================
+    if (fecha_inicio && fecha_fin) {
+      desde = new Date(fecha_inicio).getTime();
+      hasta = new Date(fecha_fin).getTime() + (24 * 60 * 60 * 1000) - 1;
+      agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
+    } else {
+      switch(periodo) {
+        case 'diario':
+          desde = ahora - (30 * 24 * 60 * 60 * 1000);
+          agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
+          break;
+        case 'semanal':
+          desde = ahora - (52 * 7 * 24 * 60 * 60 * 1000);
+          agrupacion = "strftime('%Y-%W', datetime(timestamp_inicio/1000, 'unixepoch'))";
+          break;
+        case 'mensual':
+          desde = ahora - (12 * 30 * 24 * 60 * 60 * 1000);
+          agrupacion = "strftime('%Y-%m', datetime(timestamp_inicio/1000, 'unixepoch'))";
+          break;
+        case 'anual':
+          desde = 0;
+          agrupacion = "strftime('%Y', datetime(timestamp_inicio/1000, 'unixepoch'))";
+          break;
+        default:
+          desde = ahora - (30 * 24 * 60 * 60 * 1000);
+          agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
+      }
+    }
+    
+    // ============================================
+    // 2. CONSULTAR DATOS
+    // ============================================
+    const query = `
+      SELECT 
+        ${agrupacion} as periodo,
+        COUNT(*) as eventos,
+        SUM(consumo_litros) as total_consumo,
+        AVG(duracion_segundos) / 60 as duracion_promedio_minutos
+      FROM planta_eventos 
+      WHERE nombre_monitor = ? 
+        AND timestamp_inicio >= ? 
+        AND timestamp_inicio <= ?
+        AND timestamp_fin IS NOT NULL
+      GROUP BY periodo
+      ORDER BY periodo DESC
+    `;
+    
+    db.all(query, [nombreMonitor, desde, hasta], (err, rows) => {
+      if (err) {
+        db.close();
+        return res.status(500).json({ success: false, error: err.message });
+      }
+      
+      const totalConsumo = rows.reduce((sum, r) => sum + (r.total_consumo || 0), 0);
+      
+      res.json({
+        success: true,
+        nombre_monitor: nombreMonitor,
+        periodo: fecha_inicio && fecha_fin ? 'personalizado' : periodo,
+        rango_fechas: fecha_inicio && fecha_fin ? { inicio: fecha_inicio, fin: fecha_fin } : null,
+        datos: rows.map(r => ({
+          periodo: r.periodo,
+          eventos: r.eventos,
+          total_consumo: parseFloat(r.total_consumo.toFixed(2)),
+          duracion_promedio_minutos: Math.round(r.duracion_promedio_minutos || 0)
+        })),
+        totales: {
+          consumo: parseFloat(totalConsumo.toFixed(2)),
+          eventos: rows.reduce((sum, r) => sum + r.eventos, 0)
+        }
+      });
+      
+      db.close();
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
