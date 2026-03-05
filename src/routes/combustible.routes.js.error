@@ -155,7 +155,7 @@ router.post('/evento', (req, res) => {
                         
                         db.get(
                             'SELECT consumo_lh FROM plantas_combustible_config WHERE nombre_monitor = ?',
-                            [nombre_monitor],  // CORREGIDO: antes era nombreMonitor
+                            [nombreMonitor],
                             (err, config) => {
                                 if (err) {
                                     db.close();
@@ -238,7 +238,7 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
     let agrupacion;
     
     // ============================================
-    // 1. DETERMINAR RANGO DE FECHAS
+    // 1. DETERMINAR RANGO DE FECHAS (CORREGIDO)
     // ============================================
     if (fecha_inicio && fecha_fin) {
       // Usar rango personalizado
@@ -250,22 +250,22 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
       // Usar período predefinido
       switch(periodo) {
         case 'diario':
-          desde = ahora - (1 * 24 * 60 * 60 * 1000);
+          desde = ahora - (1 * 24 * 60 * 60 * 1000); // Solo HOY
           agrupacion = "strftime('%Y-%m-%d', datetime(timestamp_inicio/1000, 'unixepoch'))";
           console.log('   📅 Modo DIARIO: solo hoy');
           break;
         case 'semanal':
-          desde = ahora - (7 * 24 * 60 * 60 * 1000);
+          desde = ahora - (7 * 24 * 60 * 60 * 1000); // Últimos 7 días
           agrupacion = "strftime('%Y-%W', datetime(timestamp_inicio/1000, 'unixepoch'))";
           console.log('   📅 Modo SEMANAL: últimos 7 días');
           break;
         case 'mensual':
-          desde = ahora - (30 * 24 * 60 * 60 * 1000);
+          desde = ahora - (30 * 24 * 60 * 60 * 1000); // Últimos 30 días
           agrupacion = "strftime('%Y-%m', datetime(timestamp_inicio/1000, 'unixepoch'))";
           console.log('   📅 Modo MENSUAL: últimos 30 días');
           break;
         case 'anual':
-          desde = ahora - (365 * 24 * 60 * 60 * 1000);
+          desde = ahora - (365 * 24 * 60 * 60 * 1000); // Últimos 365 días
           agrupacion = "strftime('%Y', datetime(timestamp_inicio/1000, 'unixepoch'))";
           console.log('   📅 Modo ANUAL: últimos 365 días');
           break;
@@ -275,8 +275,10 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
       }
     }
     
+    console.log(`   📅 Rango final: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
+    
     // ============================================
-    // 2. CONSULTAR DATOS
+    // 2. CONSULTAR DATOS (FILTRADOS POR FECHA)
     // ============================================
     const query = `
       SELECT 
@@ -311,7 +313,10 @@ router.get('/consumo-periodo/:nombreMonitor', (req, res) => {
         success: true,
         nombre_monitor: nombreMonitor,
         periodo: fecha_inicio && fecha_fin ? 'personalizado' : periodo,
-        rango_fechas: fecha_inicio && fecha_fin ? { inicio: fecha_inicio, fin: fecha_fin } : null,
+        rango_fechas: fecha_inicio && fecha_fin ? {
+          inicio: fecha_inicio,
+          fin: fecha_fin
+        } : null,
         datos: rows.map(r => ({
           periodo: r.periodo,
           eventos: r.eventos,
@@ -348,28 +353,30 @@ router.get('/resumen-global', (req, res) => {
     let hasta = ahora;
     
     // ============================================
-    // 1. DETERMINAR RANGO DE FECHAS
+    // 1. DETERMINAR RANGO DE FECHAS (CORREGIDO)
     // ============================================
     if (fecha_inicio && fecha_fin) {
+      // Usar rango personalizado
       desde = new Date(fecha_inicio).getTime();
       hasta = new Date(fecha_fin).getTime() + (24 * 60 * 60 * 1000) - 1;
       console.log(`   📅 Rango personalizado: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
     } else {
+      // Usar período predefinido - ¡AHORA SÍ FILTRA!
       switch(periodo) {
         case 'diario':
-          desde = ahora - (1 * 24 * 60 * 60 * 1000);
+          desde = ahora - (1 * 24 * 60 * 60 * 1000); // Solo HOY
           console.log('   📅 Modo DIARIO: solo hoy');
           break;
         case 'semanal':
-          desde = ahora - (7 * 24 * 60 * 60 * 1000);
+          desde = ahora - (7 * 24 * 60 * 60 * 1000); // Últimos 7 días
           console.log('   📅 Modo SEMANAL: últimos 7 días');
           break;
         case 'mensual':
-          desde = ahora - (30 * 24 * 60 * 60 * 1000);
+          desde = ahora - (30 * 24 * 60 * 60 * 1000); // Últimos 30 días
           console.log('   📅 Modo MENSUAL: últimos 30 días');
           break;
         case 'anual':
-          desde = ahora - (365 * 24 * 60 * 60 * 1000);
+          desde = ahora - (365 * 24 * 60 * 60 * 1000); // Últimos 365 días
           console.log('   📅 Modo ANUAL: últimos 365 días');
           break;
         default:
@@ -377,8 +384,10 @@ router.get('/resumen-global', (req, res) => {
       }
     }
     
+    console.log(`   📅 Rango final: ${new Date(desde).toISOString()} → ${new Date(hasta).toISOString()}`);
+    
     // ============================================
-    // 2. CONSUMO POR SEDE
+    // 2. CONSUMO POR SEDE (CON FILTRO DE FECHAS)
     // ============================================
     let querySedes = `
       SELECT 
@@ -409,8 +418,10 @@ router.get('/resumen-global', (req, res) => {
         return res.status(500).json({ success: false, error: err.message });
       }
       
+      console.log(`   📊 Sedes encontradas: ${sedes.length}`);
+      
       // ============================================
-      // 3. TOP 10 PLANTAS
+      // 3. TOP 10 PLANTAS (CON FILTRO DE FECHAS)
       // ============================================
       let queryTop = `
         SELECT 
@@ -441,9 +452,12 @@ router.get('/resumen-global', (req, res) => {
           return res.status(500).json({ success: false, error: err.message });
         }
         
+        // Filtrar solo sedes con consumo
         const sedesConConsumo = sedes.filter(s => s.total_consumo > 0);
         const totalConsumo = sedesConConsumo.reduce((sum, s) => sum + (s.total_consumo || 0), 0);
         const totalEventos = sedesConConsumo.reduce((sum, s) => sum + (s.total_eventos || 0), 0);
+        
+        console.log(`   ✅ Total consumo: ${totalConsumo.toFixed(2)}L, Eventos: ${totalEventos}`);
         
         res.json({
           success: true,
